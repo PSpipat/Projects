@@ -1,0 +1,17 @@
+﻿NodeID,B_ID,Name,flor,X,Y,Type
+Elevator,2,Elevator,7,228,583,Elevator
+P1,2,fontElevator,7,224,471,Path
+P2,2,font17076,7,111,468,Path
+P3,2,font17075-17074,7,352,467,Path
+P4,2,3way,7,463,464,Path
+P5,2,font17072-17073,7,558,465,Path
+P6,2,font17071,7,464,237,Path
+P7,2,fontToilet,7,464,87,Path
+17071,2,room17071,7,528,232,Room
+17072,2,room17072,7,534,410,Room
+17073,2,room17073,7,483,524,Room
+17074,2,room17074,7,305,510,Room
+17075,2,room17075,7,299,413,Room
+17076,2,room17076,7,158,419,Room
+17077,2,room17077,7,171,526,Room
+Toilet ,2,Toilet,7,558,82,Toilet

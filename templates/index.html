@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM Navigation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+    <!-- <link rel="stylesheet" href="/static/styles.css"> -->
+    <style>
+        #map { height: 80vh; }
+    </style>
+</head>
+<body>
+
+    <p>คลิกบนแผนที่เพื่อเลือก <b>จุดเริ่มต้น</b></p>
+    <p>จุดเริ่มต้น: <span id="start-coords">ยังไม่เลือก</span></p>
+
+    <label for="end">เลือกจุดปลายทาง:</label>
+    <select id="end">
+        {% for name in building_entries.keys() %}
+            <option value="{{ name }}">{{ name }}</option>
+        {% endfor %}
+    </select>
+
+    <button onclick="findRoute()">นำทาง</button>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        const footways = JSON.parse('{{ footways|safe }}');
+
+        const map = L.map('map').setView([13.868404, 100.482293], 18);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // footways.forEach(footway => {
+        //     L.polyline(footway, {
+        //         color: 'green',
+        //         weight: 3,
+        //         opacity: 0.7
+        //     }).addTo(map);
+        // });
+
+        let startMarker = null;
+        let startCoords = null;
+
+        map.on('click', function (e) {
+            if (startMarker) {
+                map.removeLayer(startMarker);
+            }
+            startCoords = [e.latlng.lat, e.latlng.lng];
+            startMarker = L.marker(startCoords).addTo(map);
+            document.getElementById("start-coords").innerText = `${startCoords[0].toFixed(6)}, ${startCoords[1].toFixed(6)}`;
+        });
+
+        let routeLayer;
+
+        function findRoute() {
+            if (!startCoords) {
+                alert("กรุณาคลิกเลือกจุดเริ่มต้นบนแผนที่!");
+                return;
+            }
+
+            const end = document.getElementById('end').value;
+
+            fetch('/route', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ start: startCoords, end: end })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (routeLayer) map.removeLayer(routeLayer);
+                routeLayer = L.polyline(data.path_coords, { color: 'blue', weight: 5 }).addTo(map);
+            });
+        }
+    </script>
+
+</body>
+</html>
