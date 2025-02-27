@@ -1,16 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OSM Navigation</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-    <!-- <link rel="stylesheet" href="/static/styles.css"> -->
+    <link rel="stylesheet" href="/static/styles.css">
+
+
     <style>
-        #map { height: 80vh; }
+        #map {
+            width: 800px;
+            height: 600px;
+        }
     </style>
+
+
 </head>
+
 <body>
 
     <p>คลิกบนแผนที่เพื่อเลือก <b>จุดเริ่มต้น</b></p>
@@ -19,7 +28,7 @@
     <label for="end">เลือกจุดปลายทาง:</label>
     <select id="end">
         {% for name in building_entries.keys() %}
-            <option value="{{ name }}">{{ name }}</option>
+        <option value="{{ name }}">{{ name }}</option>
         {% endfor %}
     </select>
 
@@ -27,8 +36,22 @@
 
     <div id="map"></div>
 
+
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script>
+        const userIcon = L.icon({
+            iconUrl: '/static/student.png', // ใส่ URL หรือ Path ของรูป Marker ที่ต้องการ
+            iconSize: [32, 32], // ขนาดของไอคอน (width, height)
+            iconAnchor: [16, 32], // จุดยึดของไอคอน (ตรงกลางด้านล่าง)
+            popupAnchor: [0, -32] // จุดที่แสดง popup ถ้าต้องการ
+        });
+        const destinationIcon = L.icon({
+            iconUrl: '/static/goal.png', // ใส่ URL หรือ Path ของไอคอนที่ต้องการ
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        });
+
         const footways = JSON.parse('{{ footways|safe }}');
 
         const map = L.map('map').setView([13.868404, 100.482293], 18);
@@ -37,27 +60,52 @@
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // footways.forEach(footway => {
-        //     L.polyline(footway, {
-        //         color: 'green',
-        //         weight: 3,
-        //         opacity: 0.7
-        //     }).addTo(map);
-        // });
-
         let startMarker = null;
-        let startCoords = null;
+        let startCoords = [13.868429, 100.482303]; // ค่าเริ่มต้น
+        let watchId = null; // ใช้สำหรับอัปเดตตำแหน่งทุก 3 วินาที
 
-        map.on('click', function (e) {
+        // อัปเดต Marker และ UI
+        function updateStartMarker(coords) {
             if (startMarker) {
                 map.removeLayer(startMarker);
             }
-            startCoords = [e.latlng.lat, e.latlng.lng];
-            startMarker = L.marker(startCoords).addTo(map);
+            startCoords = coords;
+            startMarker = L.marker(startCoords, { icon: userIcon }).addTo(map);
             document.getElementById("start-coords").innerText = `${startCoords[0].toFixed(6)}, ${startCoords[1].toFixed(6)}`;
+        }
+
+        // ขอสิทธิ์เข้าถึงตำแหน่ง
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const userCoords = [position.coords.latitude, position.coords.longitude];
+                    updateStartMarker(userCoords);
+                },
+                () => {
+                    console.log("ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง, ใช้ค่าเริ่มต้นแทน");
+                    updateStartMarker(startCoords); // ใช้พิกัดเริ่มต้น
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        } else {
+            console.log("เบราว์เซอร์ไม่รองรับ Geolocation");
+            updateStartMarker(startCoords); // ใช้พิกัดเริ่มต้น
+        }
+
+        map.on('click', function (e) {
+            // หยุดการติดตามตำแหน่งอัตโนมัติเมื่อคลิกเลือกเอง
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            updateStartMarker([e.latlng.lat, e.latlng.lng]);
         });
 
-        let routeLayer;
+
+        let routeLayer = null; // เก็บเส้นทางที่ได้จากการนำทาง
+        let destinationMarker = null; // เก็บ Marker ของจุดหมายปลายทาง
+        let animatedPath = null;
+        let animationInterval = null;
 
         function findRoute() {
             if (!startCoords) {
@@ -72,13 +120,39 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ start: startCoords, end: end })
             })
-            .then(response => response.json())
-            .then(data => {
-                if (routeLayer) map.removeLayer(routeLayer);
-                routeLayer = L.polyline(data.path_coords, { color: 'blue', weight: 5 }).addTo(map);
-            });
+                .then(response => response.json())
+                .then(data => {
+                    if (routeLayer) map.removeLayer(routeLayer);
+                    if (animatedPath) map.removeLayer(animatedPath);
+                    if (animationInterval) clearInterval(animationInterval);
+
+                    // สร้างเส้นหลัก (เงาให้เส้นดูเด่น)
+                    routeLayer = L.polyline(data.path_coords, {
+                        color: 'black', weight: 9, opacity: 0.5
+                    }).addTo(map);
+
+                    // สร้างเส้นเรืองแสง
+                    animatedPath = L.polyline(data.path_coords, {
+                        color: 'cyan', // สีเส้น
+                        weight: 5,
+                        opacity: 0.9,
+                        dashArray: "15, 10", // ทำเป็นเส้นประ
+                    }).addTo(map);
+
+                    // ทำให้เส้นเคลื่อนไหว
+                    let dashOffset = 0;
+                    animationInterval = setInterval(() => {
+                        dashOffset = (dashOffset + 1) % 50; // ขยับไปเรื่อย ๆ
+                        animatedPath.setStyle({ dashOffset: dashOffset.toString() });
+                    }, 100);
+                });
         }
+
+
     </script>
 
+
+
 </body>
+
 </html>

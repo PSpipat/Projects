@@ -15,8 +15,8 @@ def load_building_entries(csv_file):
         next(reader)  # ข้าม header
         for row in reader:
             building_name = row[1]  # ใช้ชื่ออาคารเป็น key
-            latitude = float(row[2])  # ดึง latitude
-            longitude = float(row[3])  # ดึง longitude
+            latitude = float(row[4])  # ดึง latitude
+            longitude = float(row[5])  # ดึง longitude
             building_entries[building_name] = (latitude, longitude)
     return building_entries
 
@@ -93,7 +93,7 @@ def index():
 
 @app.route('/route', methods=['POST'])
 def route():
-    """ คำนวณเส้นทางจากจุดเริ่มต้นไปยังอาคารปลายทาง """
+    """ คำนวณเส้นทางจากจุดเริ่มต้นไปยังอาคารปลายทาง โดยใช้ A* """
     data = request.get_json()
     start_coords = tuple(data['start'])
     end_building = data['end']
@@ -107,28 +107,30 @@ def route():
     G = build_graph(footways, nodes)
 
     try:
-        # หาโหนดเริ่มต้นที่ใกล้ที่สุด
+        # หาโหนดเริ่มต้นและปลายทางที่ใกล้ที่สุด
         start_node = min(nodes.keys(), key=lambda node: haversine(start_coords[0], start_coords[1], nodes[node][0], nodes[node][1]))
         end_node = min(nodes.keys(), key=lambda node: haversine(end_coords[0], end_coords[1], nodes[node][0], nodes[node][1]))
 
-        # ตรวจสอบว่าโหนดอยู่ในกราฟหรือไม่
+        # ตรวจสอบว่าโหนดอยู่ในกราฟ
         if start_node not in G or end_node not in G:
-            # หาโหนดที่ใกล้ที่สุดที่อยู่ในกราฟ
             valid_nodes = [node for node in nodes.keys() if node in G]
-            
             if not valid_nodes:
                 return jsonify(error="No valid route found"), 404
 
-            # กรณีที่ start_node ไม่อยู่ในกราฟ
             if start_node not in G:
                 start_node = min(valid_nodes, key=lambda node: haversine(start_coords[0], start_coords[1], nodes[node][0], nodes[node][1]))
-            
-            # กรณีที่ end_node ไม่อยู่ในกราฟ
+
             if end_node not in G:
                 end_node = min(valid_nodes, key=lambda node: haversine(end_coords[0], end_coords[1], nodes[node][0], nodes[node][1]))
 
-        # หาเส้นทางที่สั้นที่สุด
-        path = nx.shortest_path(G, source=start_node, target=end_node, weight='weight')
+        # กำหนด heuristic function (Haversine ระหว่าง node ปัจจุบันและ node ปลายทาง)
+        def heuristic(n1, n2):
+            lat1, lon1 = nodes[n1]
+            lat2, lon2 = nodes[n2]
+            return haversine(lat1, lon1, lat2, lon2)
+
+        # คำนวณเส้นทางโดยใช้ A*
+        path = nx.astar_path(G, source=start_node, target=end_node, weight='weight', heuristic=heuristic)
         path_coords = [nodes[node] for node in path]
 
         return jsonify(path_coords=path_coords)
@@ -137,6 +139,7 @@ def route():
         return jsonify(error="No path exists between the points"), 404
     except Exception as e:
         return jsonify(error=str(e)), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
