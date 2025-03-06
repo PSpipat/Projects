@@ -1,0 +1,8 @@
+﻿C_ID ,NodeID,ConnectedTO,Type
+1,P1,"P2,P3",walkway
+2,P2,P1,walkway
+3,P3,"P1,P4",walkway
+4,P4,"P3,P5",walkway
+5,P5,P4,walkway
+6,P6,"P4,P7",walkway
+7,P7,P6,walkway

@@ -1,4 +1,4 @@
-﻿NodeID,B_ID,Name,flor,X,Y,Type
+﻿NodeID,B_ID,Detail,flor,X,Y,Type
 Elevator,2,Elevator,7,228,583,Elevator
 P1,2,fontElevator,7,224,471,Path
 P2,2,font17076,7,111,468,Path

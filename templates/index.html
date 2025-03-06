@@ -25,14 +25,12 @@
     <p>คลิกบนแผนที่เพื่อเลือก <b>จุดเริ่มต้น</b></p>
     <p>จุดเริ่มต้น: <span id="start-coords">ยังไม่เลือก</span></p>
 
-    <label for="end">เลือกจุดปลายทาง:</label>
-    <select id="end">
+    <p>เลือกอาคารปลายทาง:</p>
+    <div id="building-buttons">
         {% for name in building_entries.keys() %}
-        <option value="{{ name }}">{{ name }}</option>
+        <button class="building-btn" onclick="findRoute('{{ name }}')" style="margin: 10px;">{{ name }}</button>
         {% endfor %}
-    </select>
-
-    <button onclick="findRoute()">นำทาง</button>
+    </div>
 
     <div id="map"></div>
 
@@ -101,52 +99,48 @@
             updateStartMarker([e.latlng.lat, e.latlng.lng]);
         });
 
-
-        let routeLayer = null; // เก็บเส้นทางที่ได้จากการนำทาง
         let destinationMarker = null; // เก็บ Marker ของจุดหมายปลายทาง
+        let routeLayer = null; // เก็บเส้นทางที่ได้จากการนำทาง
         let animatedPath = null;
-        let animationInterval = null;
+        let animationFrame = null;
 
-        function findRoute() {
+        function findRoute(buildingName) {
             if (!startCoords) {
                 alert("กรุณาคลิกเลือกจุดเริ่มต้นบนแผนที่!");
                 return;
             }
 
-            const end = document.getElementById('end').value;
-
             fetch('/route', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ start: startCoords, end: end })
+                body: JSON.stringify({ start: startCoords, end: buildingName }) // ใช้ค่าจากปุ่ม
             })
                 .then(response => response.json())
                 .then(data => {
                     if (routeLayer) map.removeLayer(routeLayer);
                     if (animatedPath) map.removeLayer(animatedPath);
-                    if (animationInterval) clearInterval(animationInterval);
+                    if (destinationMarker) map.removeLayer(destinationMarker);
+                    if (animationFrame) cancelAnimationFrame(animationFrame);
 
-                    // สร้างเส้นหลัก (เงาให้เส้นดูเด่น)
-                    routeLayer = L.polyline(data.path_coords, {
-                        color: 'black', weight: 9, opacity: 0.5
-                    }).addTo(map);
+                    // วาดเส้นทาง
+                    routeLayer = L.polyline(data.path_coords, { color: 'black', weight: 9, opacity: 0.5 }).addTo(map);
+                    animatedPath = L.polyline(data.path_coords, { color: '#FFFF00', weight: 5, opacity: 0.9, dashArray: "20, 15" }).addTo(map);
 
-                    // สร้างเส้นเรืองแสง
-                    animatedPath = L.polyline(data.path_coords, {
-                        color: 'cyan', // สีเส้น
-                        weight: 5,
-                        opacity: 0.9,
-                        dashArray: "15, 10", // ทำเป็นเส้นประ
-                    }).addTo(map);
-
-                    // ทำให้เส้นเคลื่อนไหว
-                    let dashOffset = 0;
-                    animationInterval = setInterval(() => {
-                        dashOffset = (dashOffset + 1) % 50; // ขยับไปเรื่อย ๆ
+                    // แอนิเมชันเส้นทาง
+                    let dashOffset = 30;
+                    function animate() {
+                        dashOffset = (dashOffset - 0.5 + 30) % 30;
                         animatedPath.setStyle({ dashOffset: dashOffset.toString() });
-                    }, 100);
+                        animationFrame = requestAnimationFrame(animate);
+                    }
+                    animate();
+
+                    // เพิ่ม Marker จุดหมายปลายทาง
+                    const endCoords = data.path_coords[data.path_coords.length - 1];
+                    destinationMarker = L.marker(endCoords, { icon: destinationIcon }).addTo(map);
                 });
         }
+
 
 
     </script>

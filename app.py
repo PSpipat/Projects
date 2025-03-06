@@ -20,7 +20,7 @@ def load_building_entries(csv_file):
             building_entries[building_name] = (latitude, longitude)
     return building_entries
 
-building_entries = load_building_entries('building_entries.csv')
+building_entries = load_building_entries('Building.csv')
 
 def parse_osm_footways(osm_file):
     """ อ่านข้อมูลทางเดินจากไฟล์ OSM และเก็บเป็น footways + nodes """
