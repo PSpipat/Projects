@@ -132,8 +132,19 @@ def route():
         # คำนวณเส้นทางโดยใช้ A*
         path = nx.astar_path(G, source=start_node, target=end_node, weight='weight', heuristic=heuristic)
         path_coords = [nodes[node] for node in path]
+        
+        # คำนวณระยะทางรวม
+        total_distance = 0
+        for i in range(len(path) - 1):
+            lat1, lon1 = nodes[path[i]]
+            lat2, lon2 = nodes[path[i + 1]]
+            segment_distance = haversine(lat1, lon1, lat2, lon2)
+            total_distance += segment_distance
+        
+        # แปลงเป็นหน่วยเมตร
+        total_distance_meters = round(total_distance)
 
-        return jsonify(path_coords=path_coords)
+        return jsonify(path_coords=path_coords, distance=total_distance_meters)
 
     except nx.NetworkXNoPath:
         return jsonify(error="No path exists between the points"), 404

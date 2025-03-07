@@ -1,152 +1,422 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OSM Navigation</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
     <link rel="stylesheet" href="/static/styles.css">
 
-
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        nav {
+            background: #333;
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+
+        nav h1 {
+            margin: 0;
+            padding-bottom: 10px;
+        }
+
+        nav ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        nav ul li {
+            margin: 5px;
+            cursor: pointer;
+            padding: 10px 15px;
+            background: #555;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        nav ul li:hover {
+            background: #777;
+        }
+
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 900;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .modal h2 {
+            margin: 0;
+        }
+
+        .close-btn {
+            background: #ff5555;
+            padding: 6px 12px;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .close-btn:hover {
+            background: #ff0000;
+        }
+
+        #map-container {
+            width: 100%;
+            height: 500px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
         #map {
-            width: 800px;
-            height: 600px;
+            width: 100%;
+            height: 100%;
+        }
+
+        #welcome-message {
+            text-align: center;
+            padding: 50px 20px;
+            background: white;
+            margin: 20px auto;
+            max-width: 600px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #welcome-message h2 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        #welcome-message p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -35;
+            }
+        }
+
+        .animated-line {
+            animation: dash 1s linear infinite;
+        }
+        
+        #distance-info {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: white;
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .loading-indicator {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
-
-
 </head>
 
 <body>
+    <nav>
+        <h1>OSM Navigation</h1>
+        <ul id="building-menu">
+            {% for name in building_entries.keys() %}
+            <li onclick="showMapForBuilding('{{ name }}')">{{ name }}</li>
+            {% endfor %}
+        </ul>
+    </nav>
 
-    <p>คลิกบนแผนที่เพื่อเลือก <b>จุดเริ่มต้น</b></p>
-    <p>จุดเริ่มต้น: <span id="start-coords">ยังไม่เลือก</span></p>
-
-    <p>เลือกอาคารปลายทาง:</p>
-    <div id="building-buttons">
-        {% for name in building_entries.keys() %}
-        <button class="building-btn" onclick="findRoute('{{ name }}')" style="margin: 10px;">{{ name }}</button>
-        {% endfor %}
+    <div id="welcome-message">
+        <h2>Welcome to Campus Navigation</h2>
+        <p>Select a building from the menu above to view its location and get directions.</p>
+        <p>The system will automatically calculate the best route to your destination.</p>
     </div>
 
-    <div id="map"></div>
-
+    <div class="modal-backdrop" id="modal-backdrop" onclick="closeModal()"></div>
+    
+    <div id="map-modal" class="modal">
+        <div class="modal-header">
+            <h2 id="building-name">อาคาร</h2>
+            <button class="close-btn" onclick="closeModal()">X</button>
+        </div>
+        
+        <div class="loading-indicator" id="loading-indicator">
+            <div class="loading-spinner"></div>
+            <p>กำลังค้นหาเส้นทาง...</p>
+        </div>
+        
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="distance-info">ระยะทาง: <span id="distance-value">0</span> เมตร</div>
+        </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
     <script>
+        let map = null;
+        let startMarker = null;
+        let startCoords = [13.868429, 100.482303];
+        let destinationMarker = null;
+        let routeLayer = null;
+        let animatedPath = null;
+        let animationFrame = null;
+        let selectedBuilding = null;
+        let dashOffset = 0;
+        const distanceInfo = document.getElementById('distance-info');
+        const distanceValue = document.getElementById('distance-value');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
         const userIcon = L.icon({
-            iconUrl: '/static/student.png', // ใส่ URL หรือ Path ของรูป Marker ที่ต้องการ
-            iconSize: [32, 32], // ขนาดของไอคอน (width, height)
-            iconAnchor: [16, 32], // จุดยึดของไอคอน (ตรงกลางด้านล่าง)
-            popupAnchor: [0, -32] // จุดที่แสดง popup ถ้าต้องการ
-        });
-        const destinationIcon = L.icon({
-            iconUrl: '/static/goal.png', // ใส่ URL หรือ Path ของไอคอนที่ต้องการ
+            iconUrl: '/static/student.png',
             iconSize: [32, 32],
             iconAnchor: [16, 32],
             popupAnchor: [0, -32]
         });
 
-        const footways = JSON.parse('{{ footways|safe }}');
-
-        const map = L.map('map').setView([13.868404, 100.482293], 18);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        let startMarker = null;
-        let startCoords = [13.868429, 100.482303]; // ค่าเริ่มต้น
-        let watchId = null; // ใช้สำหรับอัปเดตตำแหน่งทุก 3 วินาที
-
-        // อัปเดต Marker และ UI
-        function updateStartMarker(coords) {
-            if (startMarker) {
-                map.removeLayer(startMarker);
-            }
-            startCoords = coords;
-            startMarker = L.marker(startCoords, { icon: userIcon }).addTo(map);
-            document.getElementById("start-coords").innerText = `${startCoords[0].toFixed(6)}, ${startCoords[1].toFixed(6)}`;
-        }
-
-        // ขอสิทธิ์เข้าถึงตำแหน่ง
-        if (navigator.geolocation) {
-            watchId = navigator.geolocation.watchPosition(
-                (position) => {
-                    const userCoords = [position.coords.latitude, position.coords.longitude];
-                    updateStartMarker(userCoords);
-                },
-                () => {
-                    console.log("ผู้ใช้ปฏิเสธการเข้าถึงตำแหน่ง, ใช้ค่าเริ่มต้นแทน");
-                    updateStartMarker(startCoords); // ใช้พิกัดเริ่มต้น
-                },
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-            );
-        } else {
-            console.log("เบราว์เซอร์ไม่รองรับ Geolocation");
-            updateStartMarker(startCoords); // ใช้พิกัดเริ่มต้น
-        }
-
-        map.on('click', function (e) {
-            // หยุดการติดตามตำแหน่งอัตโนมัติเมื่อคลิกเลือกเอง
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-            updateStartMarker([e.latlng.lat, e.latlng.lng]);
+        const destinationIcon = L.icon({
+            iconUrl: '/static/goal.png',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
         });
 
-        let destinationMarker = null; // เก็บ Marker ของจุดหมายปลายทาง
-        let routeLayer = null; // เก็บเส้นทางที่ได้จากการนำทาง
-        let animatedPath = null;
-        let animationFrame = null;
+        function initMap() {
+            if (map === null) {
+                map = L.map('map').setView([13.868404, 100.482293], 18);
 
-        function findRoute(buildingName) {
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+
+                // Initialize user location
+                updateStartMarker(startCoords);
+
+                map.on('click', function(e) {
+                    updateStartMarker([e.latlng.lat, e.latlng.lng]);
+                    if (selectedBuilding) {
+                        findRoute();
+                    }
+                });
+            }
+        }
+
+        function updateStartMarker(coords) {
+            if (startMarker) map.removeLayer(startMarker);
+            startCoords = coords;
+            startMarker = L.marker(startCoords, { icon: userIcon }).addTo(map);
+        }
+
+        function watchUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        console.log("Got position:", position.coords.latitude, position.coords.longitude);
+                        const userCoords = [position.coords.latitude, position.coords.longitude];
+                        updateStartMarker(userCoords);
+                        
+                        // If route is already displayed, recalculate it
+                        if (selectedBuilding && routeLayer) {
+                            findRoute();
+                        }
+                    },
+                    (error) => {
+                        console.error("Geolocation error:", error);
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            } else {
+                console.log("Geolocation not supported");
+            }
+        }
+
+        // Function to animate the path
+        function animatePath() {
+            if (animatedPath) {
+                dashOffset -= 0.5;
+                const pathElement = animatedPath._path;
+                if (pathElement) {
+                    pathElement.style.strokeDashoffset = dashOffset;
+                }
+                animationFrame = requestAnimationFrame(animatePath);
+            }
+        }
+
+        function showMapForBuilding(buildingName) {
+            document.getElementById("modal-backdrop").style.display = "block";
+            document.getElementById("map-modal").style.display = "block";
+            document.getElementById("building-name").innerText = buildingName;
+            
+            selectedBuilding = buildingName;
+            
+            // Initialize the map if it doesn't exist
+            initMap();
+            
+            // Get user's current location
+            watchUserLocation();
+            
+            // Automatically find route
+            findRoute();
+            
+            // Resize map after modal is shown to fix rendering issues
+            setTimeout(() => {
+                if (map) map.invalidateSize();
+            }, 100);
+        }
+
+        function closeModal() {
+            document.getElementById("modal-backdrop").style.display = "none";
+            document.getElementById("map-modal").style.display = "none";
+            
+            // Clean up animation if needed
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+        }
+
+        function findRoute() {
+            if (!selectedBuilding) {
+                alert("กรุณาเลือกอาคารปลายทาง!");
+                return;
+            }
+
             if (!startCoords) {
                 alert("กรุณาคลิกเลือกจุดเริ่มต้นบนแผนที่!");
                 return;
             }
 
+            // Show loading indicator
+            loadingIndicator.style.display = 'block';
+            distanceInfo.style.display = 'none';
+
             fetch('/route', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ start: startCoords, end: buildingName }) // ใช้ค่าจากปุ่ม
+                body: JSON.stringify({ start: startCoords, end: selectedBuilding })
             })
-                .then(response => response.json())
-                .then(data => {
-                    if (routeLayer) map.removeLayer(routeLayer);
-                    if (animatedPath) map.removeLayer(animatedPath);
-                    if (destinationMarker) map.removeLayer(destinationMarker);
-                    if (animationFrame) cancelAnimationFrame(animationFrame);
+            .then(response => {
+                if (!response.ok) throw new Error("Failed to fetch route");
+                return response.json();
+            })
+            .then(data => {
+                // Hide loading indicator
+                loadingIndicator.style.display = 'none';
+                
+                if (!data.path_coords || data.path_coords.length === 0) {
+                    alert("ไม่พบเส้นทางไปยังปลายทาง!");
+                    return;
+                }
 
-                    // วาดเส้นทาง
-                    routeLayer = L.polyline(data.path_coords, { color: 'black', weight: 9, opacity: 0.5 }).addTo(map);
-                    animatedPath = L.polyline(data.path_coords, { color: '#FFFF00', weight: 5, opacity: 0.9, dashArray: "20, 15" }).addTo(map);
+                if (routeLayer) map.removeLayer(routeLayer);
+                if (animatedPath) map.removeLayer(animatedPath);
+                if (destinationMarker) map.removeLayer(destinationMarker);
+                if (animationFrame) cancelAnimationFrame(animationFrame);
 
-                    // แอนิเมชันเส้นทาง
-                    let dashOffset = 30;
-                    function animate() {
-                        dashOffset = (dashOffset - 0.5 + 30) % 30;
-                        animatedPath.setStyle({ dashOffset: dashOffset.toString() });
-                        animationFrame = requestAnimationFrame(animate);
-                    }
-                    animate();
+                routeLayer = L.polyline(data.path_coords, { color: 'black', weight: 9 }).addTo(map);
+                
+                // Create animated path with dash pattern
+                animatedPath = L.polyline(data.path_coords, { 
+                    color: 'yellow', 
+                    weight: 5, 
+                    dashArray: "20, 15",
+                    dashOffset: 0
+                }).addTo(map);
+                
+                // Apply animation style to the path
+                if (animatedPath._path) {
+                    dashOffset = 0;
+                    animationFrame = requestAnimationFrame(animatePath);
+                }
 
-                    // เพิ่ม Marker จุดหมายปลายทาง
-                    const endCoords = data.path_coords[data.path_coords.length - 1];
-                    destinationMarker = L.marker(endCoords, { icon: destinationIcon }).addTo(map);
-                });
+                const endCoords = data.path_coords[data.path_coords.length - 1];
+                destinationMarker = L.marker(endCoords, { icon: destinationIcon }).addTo(map);
+
+                map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                
+                // แสดงระยะทาง
+                if (data.distance) {
+                    distanceValue.innerText = data.distance;
+                    distanceInfo.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                // Hide loading indicator
+                loadingIndicator.style.display = 'none';
+                
+                console.error("Error:", error);
+                alert("เกิดข้อผิดพลาดในการค้นหาเส้นทาง กรุณาลองใหม่");
+            });
         }
-
-
-
     </script>
-
-
-
 </body>
-
 </html>
